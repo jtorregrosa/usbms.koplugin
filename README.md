@@ -34,7 +34,7 @@ You can also [build the package from source](#build-a-release). The development 
 
 ## Use
 
-- **Plug in a computer** while KOReader is open: it asks whether to share storage. Tap **Share**. If you decline, it does not ask again until the cable is unplugged.
+- **Plug in a computer** while KOReader is open: it asks whether to share storage. Tap **Share**. If you decline, it does not ask again until the cable is unplugged. While a computer is connected, the Kindle does not go to sleep, with or without this plugin; unplug the cable to put it to sleep.
 - Or **Main menu → Start USB storage**, or the **Start USB storage** gesture action.
 - Copy your files, then **eject** the Kindle on the computer. With the direct method, KOReader restarts after storage recovery succeeds. With the Amazon UI method, also unplug the cable; KOReader restarts only if automatic return is enabled and storage is available.
 - **Always eject before unplugging.** After an accidental unplug, the direct method attempts a filesystem check before restarting KOReader. This cannot guarantee recovery or prevent data loss, especially if writes were in progress.
@@ -108,6 +108,7 @@ The ZIP contains one `usbms.koplugin/` root and is checked entry by entry agains
 | The storage was busy | Something kept a file open on the partition; the log lists the process |
 | A pre-flight check failed | The device is not what the direct method expects; the log names the check. Enable the Amazon UI method instead |
 | The file system check did not finish cleanly | Copy your data off from the computer and run `chkdsk` (Windows) or `fsck.vfat` (Linux) |
+| The Kindle does not sleep after declining the prompt | Not caused by the plugin: the Kindle does not sleep while connected to a computer, even with the prompt turned off. Unplug the cable, then press the power button |
 
 The log of the last session: *Settings → Device → USB mass storage → Show last session log*, or `/var/local/usbms-koplugin.log`.
 
