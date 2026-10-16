@@ -42,5 +42,7 @@ return {
         active_text = "برای بازگشت به KOReader، Kindle را در رایانه خارج کنید.",
         returning_title = "حالت USB",
         returning_text = "در حال بازگشت به KOReader…",
+        recovery_title = "بازیابی USB لازم است",
+        recovery_text = "USB را جدا کنید و دکمهٔ روشن/خاموش را 40 ثانیه نگه دارید.",
     },
 }

@@ -42,5 +42,7 @@ return {
         active_text = "Đẩy Kindle ra trên máy tính để quay lại KOReader.",
         returning_title = "Chế độ USB",
         returning_text = "Đang quay lại KOReader…",
+        recovery_title = "Cần khôi phục USB",
+        recovery_text = "Rút USB và giữ nút nguồn trong 40 giây.",
     },
 }

@@ -42,5 +42,7 @@ return {
         active_text = "KOReader'a dönmek için Kindle'ı bilgisayardan çıkarın.",
         returning_title = "USB modu",
         returning_text = "KOReader'a dönülüyor…",
+        recovery_title = "USB kurtarma gerekli",
+        recovery_text = "USB'yi çıkarın ve güç düğmesini 40 sn basılı tutun.",
     },
 }

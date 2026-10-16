@@ -42,5 +42,7 @@ return {
         active_text = "A visszatéréshez adja ki a Kindle-t a számítógépen.",
         returning_title = "USB mód",
         returning_text = "Visszatérés a KOReaderbe…",
+        recovery_title = "USB-helyreállítás szükséges",
+        recovery_text = "Húzza ki az USB-t, és tartsa nyomva a bekapcsológombot 40 mp-ig.",
     },
 }

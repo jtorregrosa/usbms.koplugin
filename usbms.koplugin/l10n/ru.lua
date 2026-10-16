@@ -42,5 +42,7 @@ return {
         active_text = "Извлеките Kindle на компьютере, чтобы вернуться в KOReader.",
         returning_title = "Режим USB",
         returning_text = "Возврат в KOReader…",
+        recovery_title = "Требуется восстановление USB",
+        recovery_text = "Отключите USB и удерживайте кнопку питания 40 с.",
     },
 }

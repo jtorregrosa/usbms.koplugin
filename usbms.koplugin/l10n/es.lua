@@ -42,5 +42,7 @@ return {
         active_text = "Expulsa el Kindle en el ordenador para volver a KOReader.",
         returning_title = "Modo USB",
         returning_text = "Volviendo a KOReader…",
+        recovery_title = "Recuperación USB necesaria",
+        recovery_text = "Desconecta el USB y mantén pulsado el botón de encendido 40 s.",
     },
 }

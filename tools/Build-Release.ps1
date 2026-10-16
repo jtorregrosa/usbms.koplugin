@@ -9,16 +9,25 @@ $npx = if ($IsWindows) { 'npx.cmd' } else { 'npx' }
 $repo = Split-Path $PSScriptRoot -Parent
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('usbms-release-' + [guid]::NewGuid().ToString('N'))
 $stage = Join-Path $tmp 'usbms.koplugin'
-$locales = 'ar bg_BG ca cs de el eo es eu fa fi fr ga gl he hi hr hu id it_IT ja ka ko_KR lt_LT lv nb_NO nl_NL pl pt_BR pt_PT ro ru sk sl sr sv tr uk vi zh_CN zh_TW'.Split(' ')
+# Every translation in l10n/ ships; ordinal order, so Node sees the same list.
+$locales = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $repo 'usbms.koplugin/l10n') -Filter *.lua -File |
+    ForEach-Object { $_.BaseName })
+[Array]::Sort($locales, [StringComparer]::Ordinal)
+if ($locales.Count -eq 0) { throw 'No translations found' }
 try {
     New-Item -ItemType Directory -Path $tmp | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'usbms.koplugin') -Destination $stage -Recurse
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $stage 'LICENSE')
     $luaNames = @('main.lua', '_meta.lua', 'usbms_l10n.lua') + @($locales | ForEach-Object { "l10n/$_.lua" })
     $luaPaths = @($luaNames | ForEach-Object { Join-Path $stage $_ })
-    $asts = & $npx --yes --package=luaparse@0.3.1 luaparse --file @luaPaths
+    # luaparse parses a non-terminal stdin before its arguments: feed it an empty one and drop that
+    # AST. --file before every path, or a missing path would be parsed as Lua code.
+    $fileArgs = @($luaPaths | ForEach-Object { '--file'; $_ })
+    $asts = @('' | & $npx --yes --package=luaparse@0.3.1 luaparse @fileArgs)
     if ($LASTEXITCODE -ne 0) { throw 'Lua syntax validation failed' }
-    $manifestJson = $asts | & node (Join-Path $PSScriptRoot 'Check-PluginData.cjs') $stage
+    if ($asts.Count -ne $luaPaths.Count + 1) { throw "Unexpected luaparse output: $($asts.Count) ASTs" }
+    $asts = $asts | Select-Object -Skip 1
+    $manifestJson = $asts | & node (Join-Path $PSScriptRoot 'Check-PluginData.cjs') $stage @locales
     if ($LASTEXITCODE -ne 0) { throw 'Plugin data validation failed' }
     $manifest = $manifestJson | ConvertFrom-Json
     $filename = "usbms.koplugin-v$($manifest.version).zip"

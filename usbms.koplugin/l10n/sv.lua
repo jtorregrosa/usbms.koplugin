@@ -42,5 +42,7 @@ return {
         active_text = "Mata ut Kindle på datorn för att återgå till KOReader.",
         returning_title = "USB-läge",
         returning_text = "Återgår till KOReader…",
+        recovery_title = "USB-återställning krävs",
+        recovery_text = "Koppla från USB och håll strömknappen intryckt i 40 s.",
     },
 }

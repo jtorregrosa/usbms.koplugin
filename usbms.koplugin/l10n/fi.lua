@@ -42,5 +42,7 @@ return {
         active_text = "Poista Kindle tietokoneelta palataksesi KOReaderiin.",
         returning_title = "USB-tila",
         returning_text = "Palataan KOReaderiin…",
+        recovery_title = "USB-palautus tarvitaan",
+        recovery_text = "Irrota USB ja pidä virtapainiketta painettuna 40 s.",
     },
 }

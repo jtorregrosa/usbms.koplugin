@@ -41,13 +41,38 @@ log() { echo "$(date '+%H:%M:%S') $*" >> "$LOG"; }
 # mounted (traced on a PW2, FW 5.12.2.2), so that is the mount to watch.
 userstore_mounted() { grep -q ' /mnt/base-us ' /proc/mounts; }
 
+# The UDC's view of the cable: 1 with a computer, 0 without. Kindles whose UDC is not the fsl one
+# have no such file and print "none": there, nothing tells a pulled cable from an idle host.
+usb_state() {
+    [ -e "$CONNECTED" ] || { echo none; return; }
+    cat "$CONNECTED" 2>/dev/null
+}
+
+# Only reached with "none" when no USB session ever started, so no host is holding the drive.
 safe_to_launch() {
-    userstore_mounted && [ "$(cat "$CONNECTED" 2>/dev/null)" = "0" ] &&
-        [ "$(lipc-get-prop com.lab126.volumd userstoreIsAvailable 2>/dev/null)" = "1" ]
+    case "$(usb_state)" in 0|none) ;; *) return 1 ;; esac
+    userstore_mounted && [ "$(lipc-get-prop com.lab126.volumd userstoreIsAvailable 2>/dev/null)" = "1" ]
+}
+
+# Any KOReader but the one we replaced, which may linger as a zombie for a moment.
+koreader_running() {
+    for p in $(pidof reader.lua 2>/dev/null); do
+        [ "$p" != "$READER_PID" ] && return 0
+    done
+    return 1
 }
 
 cancelled() {
     [ "$(cat "$LOCK/token" 2>/dev/null)" != "$TOKEN" ] || [ -f "$LOCK/cancel" ]
+}
+
+# Once KOReader is gone, someone starting it by hand (from KUAL, say) makes this helper pointless,
+# and launching it again would run a second copy.
+superseded() {
+    if koreader_running; then
+        log "KOReader was started meanwhile, nothing left to do"
+        exit 0
+    fi
 }
 
 [ -n "$TOKEN" ] && [ "$(cat "$LOCK/token" 2>/dev/null)" = "$TOKEN" ] || exit 1
@@ -65,6 +90,10 @@ leaks=$(ls -l /proc/$$/fd 2>/dev/null | grep -c '/mnt/')
 [ "$leaks" -gt 0 ] && log "warning: $leaks descriptors still point into /mnt"
 
 launch_koreader() {
+    if koreader_running; then
+        log "KOReader is already running, not starting another one"
+        return 0
+    fi
     if ! safe_to_launch; then
         log "storage or USB state is not safe, staying in the Amazon UI"
         return 1
@@ -81,7 +110,7 @@ launch_koreader() {
     # If KOReader does not come up and nothing else owns the screen, bring the framework back.
     n=0
     while [ "$n" -lt 90 ]; do
-        pidof reader.lua > /dev/null 2>&1 && { log "KOReader is running"; return 0; }
+        koreader_running && { log "KOReader is running"; return 0; }
         sleep 1
         n=$((n + 1))
     done
@@ -110,6 +139,7 @@ log "KOReader exited; the launcher now resumes volumd and starts the framework"
 # 2. Wait for volumd to unmount the userstore, which means the computer has the drive.
 n=0
 while userstore_mounted; do
+    superseded
     if [ "$n" -ge "$PLUG_TIMEOUT" ]; then
         log "no USB session after ${PLUG_TIMEOUT} s (no computer connected?)"
         [ "$AUTO_RETURN" = "1" ] && launch_koreader
@@ -120,15 +150,22 @@ while userstore_mounted; do
 done
 log "USB drive mode started after ${n} s"
 [ "$AUTO_RETURN" = "1" ] || exit 0
+if [ "$(usb_state)" = "none" ]; then
+    log "this Kindle does not report the USB cable state, staying in the Amazon UI"
+    exit 0
+fi
 
 # 3. Wait for the session to end: eject or unplug makes volumd mount the userstore again. With the
 #    cable still in, the host re-enumerates and volumd exports again a few seconds later, so
-#    KOReader must not start until the cable is physically out. The UDC reports that.
+#    KOReader must not start until the cable is physically out. The UDC reports that. A copy can
+#    take as long as it likes, so there is no timeout; KOReader started by hand ends the wait.
 while ! userstore_mounted; do
+    superseded
     sleep 2
 done
 log "userstore mounted again, waiting for the cable to be unplugged"
-while [ "$(cat "$CONNECTED" 2>/dev/null)" != "0" ] || ! userstore_mounted; do
+while [ "$(usb_state)" != "0" ] || ! userstore_mounted; do
+    superseded
     sleep 2
 done
 log "cable unplugged"
@@ -142,7 +179,7 @@ until [ "$(lipc-get-prop com.lab126.volumd userstoreIsAvailable 2>/dev/null)" = 
 done
 sleep 5
 # Last look: still mounted and still no host.
-if ! userstore_mounted || [ "$(cat "$CONNECTED" 2>/dev/null)" != "0" ]; then
+if ! userstore_mounted || [ "$(usb_state)" != "0" ]; then
     log "userstore or cable state changed again, staying in the Amazon UI"
     exit 0
 fi

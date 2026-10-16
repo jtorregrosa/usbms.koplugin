@@ -235,17 +235,19 @@ ${tail}
     assert.doesNotMatch(result.stdout, /UNEXPECTED_LAUNCH/);
 });
 
-const launchGuard = shellFunction(framework, "safe_to_launch");
-for (const [name, mounted, connected, available, expected] of [
-    ["ready storage", 0, "0", "1", 0],
-    ["connected host", 0, "1", "1", 1],
-    ["unknown connection", 0, "", "1", 1],
-    ["unmounted storage", 1, "0", "1", 1],
-    ["unavailable storage", 0, "0", "0", 1],
+const launchGuard = ["usb_state", "safe_to_launch"].map(name => shellFunction(framework, name)).join("\n");
+for (const [name, file, mounted, connected, available, expected] of [
+    ["ready storage", "/", 0, "0", "1", 0],
+    ["connected host", "/", 0, "1", "1", 1],
+    ["unknown connection", "/", 0, "", "1", 1],
+    ["unmounted storage", "/", 1, "0", "1", 1],
+    ["unavailable storage", "/", 0, "0", "0", 1],
+    ["Kindle without UDC file", "/missing-udc", 0, "1", "1", 0],
+    ["Kindle without UDC file and unavailable storage", "/missing-udc", 0, "1", "0", 1],
 ]) {
     test(`framework launch guard handles ${name}`, () => {
         const result = runShell(`
-CONNECTED=/unused
+CONNECTED=${file}
 userstore_mounted() { return ${mounted}; }
 cat() { printf '%s' '${connected}'; }
 lipc-get-prop() { printf '%s' '${available}'; }
@@ -255,6 +257,92 @@ safe_to_launch
         assert.equal(result.status, expected, result.stderr);
     });
 }
+
+const koreaderRunning = shellFunction(framework, "koreader_running");
+for (const [name, pids, expected] of [
+    ["no KOReader", "", 1],
+    ["only the exiting KOReader", "123", 1],
+    ["a new KOReader", "456", 0],
+    ["the exiting and a new KOReader", "123 456", 0],
+]) {
+    test(`framework detects ${name}`, () => {
+        const result = runShell(`
+READER_PID=123
+pidof() { [ -n '${pids}' ] && echo '${pids}'; }
+${koreaderRunning}
+koreader_running
+`);
+        assert.equal(result.status, expected, result.stderr);
+    });
+}
+
+test("framework never launches a second KOReader", () => {
+    const result = runShell(`
+log() { echo "$*"; }
+koreader_running() { return 0; }
+safe_to_launch() { echo UNEXPECTED_CHECK; return 0; }
+env() { echo UNEXPECTED_LAUNCH; }
+${shellFunction(framework, "launch_koreader")}
+launch_koreader
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /already running/);
+    assert.doesNotMatch(result.stdout, /UNEXPECTED/);
+});
+
+const frameworkTail = framework.slice(framework.indexOf('log "USB drive mode started'));
+for (const [name, setup, pattern] of [
+    ["a Kindle without UDC file", "usb_state() { echo none; }; userstore_mounted() { return 1; }", /does not report/],
+    ["KOReader started while exported", "usb_state() { echo 1; }; userstore_mounted() { return 1; }; koreader_running() { return 0; }", /started meanwhile/],
+    ["KOReader started before unplug", "usb_state() { echo 1; }; userstore_mounted() { return 0; }; koreader_running() { return 0; }", /started meanwhile/],
+]) {
+    test(`framework session ends without relaunch on ${name}`, () => {
+        const result = runShell(`
+AUTO_RETURN=1; n=0; READER_PID=123
+log() { echo "$*"; }
+sleep() { :; }
+koreader_running() { return 1; }
+launch_koreader() { echo UNEXPECTED_LAUNCH; }
+${shellFunction(framework, "superseded")}
+${setup}
+${frameworkTail}
+`);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, pattern);
+        assert.doesNotMatch(result.stdout, /UNEXPECTED_LAUNCH/);
+    });
+}
+
+for (const [name, cancelled, expected] of [
+    ["reports a failure", "return 1", "precheck"],
+    ["drops the result after a cancel", "return 0", "REMOVED"],
+]) {
+    test(`direct fail ${name}`, () => {
+        const result = runShell(`
+RESULT=$(mktemp)
+log() { :; }
+cancelled() { ${cancelled}; }
+rm() { echo REMOVED; }
+${shellFunction(direct, "fail")}
+( fail precheck "message" )
+status=$?
+command cat "$RESULT"; command rm -f "$RESULT"
+exit $status
+`);
+        assert.equal(result.status, 1);
+        assert.equal(result.stdout.trim(), expected);
+    });
+}
+
+test("direct recovery screen has English fallbacks", () => {
+    const result = runShell(`
+SCREEN_TEXTS=/missing
+${shellFunction(direct, "msg")}
+msg recovery_title; msg recovery_text
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "USB recovery required\nUnplug USB and hold power for 40 s.\n");
+});
 
 for (const [name, source] of [["direct", direct], ["framework", framework]]) {
     test(`${name} helper rejects an obsolete session token`, () => {

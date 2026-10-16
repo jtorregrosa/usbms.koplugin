@@ -42,5 +42,7 @@ return {
         active_text = "Expulseu el Kindle a l'ordinador per tornar a KOReader.",
         returning_title = "Mode USB",
         returning_text = "Tornant a KOReader…",
+        recovery_title = "Cal recuperar l'USB",
+        recovery_text = "Desconnecteu l'USB i manteniu premut el botó d'engegada 40 s.",
     },
 }

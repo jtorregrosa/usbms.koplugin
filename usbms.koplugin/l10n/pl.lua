@@ -42,5 +42,7 @@ return {
         active_text = "Wysuń Kindle na komputerze, by wrócić do KOReadera.",
         returning_title = "Tryb USB",
         returning_text = "Powrót do KOReadera…",
+        recovery_title = "Wymagane odzyskiwanie USB",
+        recovery_text = "Odłącz USB i przytrzymaj przycisk zasilania przez 40 s.",
     },
 }

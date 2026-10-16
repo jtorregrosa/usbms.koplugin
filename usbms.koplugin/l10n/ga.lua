@@ -42,5 +42,7 @@ return {
         active_text = "Díchuir an Kindle ar an ríomhaire chun filleadh ar KOReader.",
         returning_title = "Mód USB",
         returning_text = "Ag filleadh ar KOReader…",
+        recovery_title = "Tá aisghabháil USB ag teastáil",
+        recovery_text = "Dícheangail an USB agus coinnigh an cnaipe cumhachta síos 40 s.",
     },
 }

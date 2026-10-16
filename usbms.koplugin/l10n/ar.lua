@@ -42,5 +42,7 @@ return {
         active_text = "أخرِج جهاز Kindle من الحاسوب للعودة إلى KOReader.",
         returning_title = "وضع USB",
         returning_text = "جارٍ العودة إلى KOReader…",
+        recovery_title = "يلزم استرداد USB",
+        recovery_text = "افصل كابل USB واضغط زر التشغيل مطوّلاً 40 ثانية.",
     },
 }

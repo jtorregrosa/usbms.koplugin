@@ -42,5 +42,7 @@ return {
         active_text = "Κάντε εξαγωγή του Kindle στον υπολογιστή για επιστροφή στο KOReader.",
         returning_title = "Λειτουργία USB",
         returning_text = "Επιστροφή στο KOReader…",
+        recovery_title = "Απαιτείται ανάκτηση USB",
+        recovery_text = "Αποσυνδέστε το USB και κρατήστε πατημένο το κουμπί λειτουργίας 40 δ.",
     },
 }

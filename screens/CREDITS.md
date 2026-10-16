@@ -10,4 +10,8 @@ Three illustrations generated with Gemini on 2026-10-15 from prompts asking for 
 
 The bottom quarter of each image is left empty on purpose: the helper prints the status text there.
 
-`unused/` keeps alternatives that are not converted (the converter only reads this folder's top level): `usb-active-check.jpg`, a check mark, the first version of the active screen.
+`usbms-demo.gif` is the README demo: a phone recording of the direct method on a Paperwhite 2 (FW 5.12.2.2), converted at 2x speed, 6 fps and 280 px wide:
+
+```sh
+ffmpeg -i usbms.koplugin.mp4 -an -filter_complex "[0:v]setpts=PTS/2,fps=6,scale=280:-2:flags=lanczos,hqdn3d=2:2:20:20,split[a][b];[a]palettegen=max_colors=48:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" -loop 0 usbms-demo.gif
+```

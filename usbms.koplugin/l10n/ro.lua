@@ -42,5 +42,7 @@ return {
         active_text = "Scoate în siguranță Kindle-ul pe calculator ca să revii la KOReader.",
         returning_title = "Mod USB",
         returning_text = "Revenire la KOReader…",
+        recovery_title = "Este necesară recuperarea USB",
+        recovery_text = "Deconectează USB-ul și ține apăsat butonul de pornire 40 s.",
     },
 }

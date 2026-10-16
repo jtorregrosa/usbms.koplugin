@@ -130,6 +130,8 @@ msg() {
         active_text)     echo "Eject the Kindle on the computer to return to KOReader." ;;
         returning_title) echo "USB mode" ;;
         returning_text)  echo "Returning to KOReader..." ;;
+        recovery_title)  echo "USB recovery required" ;;
+        recovery_text)   echo "Unplug USB and hold power for 40 s." ;;
     esac
 }
 
@@ -218,7 +220,8 @@ fail() {
     # finish() can undo it.
     code=$1; shift
     log "$*"
-    echo "$code" > "$RESULT"
+    # After a cancel, main.lua has already told the user; a result would come up again later.
+    if cancelled; then rm -f "$RESULT"; else echo "$code" > "$RESULT"; fi
     exit 1
 }
 
@@ -269,7 +272,7 @@ finish() {
     if ! restore_userstore; then
         echo "$RECOVERY_RESULT" > "$RESULT"
         log "RECOVERY STOPPED: unplug USB and reboot the Kindle (hold power 40 s)"
-        screen usb-returning "USB recovery required" "Unplug USB and hold power for 40 s."
+        screen usb-returning "$(msg recovery_title)" "$(msg recovery_text)"
         rm -rf "$LOCK"
         rm -f "$PIDFILE"
         return 1
@@ -283,7 +286,7 @@ finish() {
 trap finish EXIT
 trap 'exit 1' INT TERM
 
-cancelled && exit 1
+cancelled && fail fail "startup cancelled"
 kill -STOP "$KOSH_PID" || fail fail "could not stop koreader.sh"
 # Snapshot KOReader's children now: some (lipc-wait-event, subprocesses) outlive it.
 OLD_TREE=$(descendants "$READER_PID")

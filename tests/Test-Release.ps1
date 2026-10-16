@@ -49,7 +49,9 @@ try {
     $checksum = [IO.File]::ReadAllText($zip[0].FullName + '.sha256').Split(' ')[0]
     if ($checksum -cne (Get-FileHash -LiteralPath $zip[0].FullName).Hash.ToLowerInvariant()) { throw 'Invalid ZIP checksum' }
     $manifest = Get-Content -LiteralPath ($zip[0].FullName + '.manifest.json') -Raw | ConvertFrom-Json
-    if ($manifest.files.Count -ne 50 -or $manifest.locales -ne 41) { throw 'Unexpected release manifest' }
+    # Fixed files: main.lua, _meta.lua, usbms_l10n.lua, two helpers, LICENSE and three screens.
+    $localeCount = @(Get-ChildItem -LiteralPath (Join-Path $repo 'usbms.koplugin/l10n') -Filter *.lua -File).Count
+    if ($manifest.files.Count -ne 9 + $localeCount -or $manifest.locales -ne $localeCount) { throw 'Unexpected release manifest' }
     Expect-Failure { & $build -OutputDir $releaseDir } 'existing release ZIP'
     Write-Output 'PASS release package and checksum'
 } finally {

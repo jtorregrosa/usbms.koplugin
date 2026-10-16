@@ -42,5 +42,7 @@ return {
         active_text = "Kanporatu Kindle-a ordenagailutik KOReader-era itzultzeko.",
         returning_title = "USB modua",
         returning_text = "KOReader-era itzultzen…",
+        recovery_title = "USB berreskuratzea behar da",
+        recovery_text = "Deskonektatu USBa eta eutsi pizteko botoia sakatuta 40 s.",
     },
 }

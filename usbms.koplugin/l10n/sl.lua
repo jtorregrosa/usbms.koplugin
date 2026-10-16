@@ -42,5 +42,7 @@ return {
         active_text = "Izvrzi Kindle v računalniku za vrnitev v KOReader.",
         returning_title = "Način USB",
         returning_text = "Vračanje v KOReader…",
+        recovery_title = "Potrebna je obnovitev USB",
+        recovery_text = "Izklopi USB in 40 s drži gumb za vklop.",
     },
 }

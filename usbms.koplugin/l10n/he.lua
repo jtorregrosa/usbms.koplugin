@@ -42,5 +42,7 @@ return {
         active_text = "הוצא את ה-Kindle במחשב כדי לחזור ל-KOReader.",
         returning_title = "מצב USB",
         returning_text = "חוזר ל-KOReader…",
+        recovery_title = "נדרש שחזור USB",
+        recovery_text = "נתק את ה-USB והחזק את לחצן ההפעלה 40 שניות.",
     },
 }

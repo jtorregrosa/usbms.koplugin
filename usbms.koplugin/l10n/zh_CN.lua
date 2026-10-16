@@ -42,5 +42,7 @@ return {
         active_text = "在电脑上弹出 Kindle 即可返回 KOReader。",
         returning_title = "USB 模式",
         returning_text = "正在返回 KOReader……",
+        recovery_title = "需要恢复 USB",
+        recovery_text = "请拔下 USB 并按住电源键 40 秒。",
     },
 }

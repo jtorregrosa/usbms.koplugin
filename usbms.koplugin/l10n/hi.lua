@@ -42,5 +42,7 @@ return {
         active_text = "KOReader पर लौटने के लिए कंप्यूटर पर Kindle इजेक्ट करें।",
         returning_title = "USB मोड",
         returning_text = "KOReader पर लौट रहे हैं…",
+        recovery_title = "USB पुनर्प्राप्ति आवश्यक है",
+        recovery_text = "USB निकालें और पावर बटन 40 सेकंड तक दबाए रखें।",
     },
 }

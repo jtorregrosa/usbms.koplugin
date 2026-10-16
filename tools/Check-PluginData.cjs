@@ -4,7 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(process.argv[2]);
-const locales = "ar bg_BG ca cs de el eo es eu fa fi fr ga gl he hi hr hu id it_IT ja ka ko_KR lt_LT lv nb_NO nl_NL pl pt_BR pt_PT ro ru sk sl sr sv tr uk vi zh_CN zh_TW".split(" ");
+// The locales in the order their ASTs arrive; the file walk below proves l10n/ holds exactly these.
+const locales = process.argv.slice(3);
+assert.ok(locales.length > 0, "No locales given");
+for (const name of locales) assert.match(name, /^[a-z]{2,3}(?:_[A-Z]{2})?$/, `Locale name: ${name}`);
 const luaFiles = ["main.lua", "_meta.lua", "usbms_l10n.lua", ...locales.map(name => `l10n/${name}.lua`)];
 const screens = ["usb-waiting", "usb-active", "usb-returning"].map(name => `screens/${name}.raw`);
 const expected = [...luaFiles, "usbms_direct.sh", "usbms_framework.sh", "LICENSE", ...screens].sort();

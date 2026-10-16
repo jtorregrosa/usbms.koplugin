@@ -64,6 +64,8 @@ local en = {
         active_text = "Eject the Kindle on the computer to return to KOReader.",
         returning_title = "USB mode",
         returning_text = "Returning to KOReader…",
+        recovery_title = "USB recovery required",
+        recovery_text = "Unplug USB and hold power for 40 s.",
     },
 }
 

@@ -42,5 +42,7 @@ return {
         active_text = "KOReaderに戻るには、パソコンでKindleを取り出してください。",
         returning_title = "USBモード",
         returning_text = "KOReaderに戻っています…",
+        recovery_title = "USBの復旧が必要です",
+        recovery_text = "USBを外し、電源ボタンを40秒間長押ししてください。",
     },
 }

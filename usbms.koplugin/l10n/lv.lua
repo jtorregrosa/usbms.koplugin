@@ -42,5 +42,7 @@ return {
         active_text = "Izgrūdiet Kindle datorā, lai atgrieztos KOReader.",
         returning_title = "USB režīms",
         returning_text = "Atgriežas KOReader…",
+        recovery_title = "Nepieciešama USB atkopšana",
+        recovery_text = "Atvienojiet USB un turiet barošanas pogu 40 s.",
     },
 }

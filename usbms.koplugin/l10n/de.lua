@@ -42,5 +42,7 @@ return {
         active_text = "Kindle am Computer auswerfen, um zu KOReader zurückzukehren.",
         returning_title = "USB-Modus",
         returning_text = "Zurück zu KOReader…",
+        recovery_title = "USB-Wiederherstellung erforderlich",
+        recovery_text = "USB trennen und Ein-/Ausschalter 40 s gedrückt halten.",
     },
 }

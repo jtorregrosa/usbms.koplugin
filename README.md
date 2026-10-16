@@ -4,6 +4,11 @@
 
 Without it, KOReader on Kindle blocks USB storage on purpose (it lives on the partition that would be exported), so copying books means leaving KOReader and going through the Amazon UI.
 
+<p align="center">
+  <img src="screens/usbms-demo.gif" width="280" alt="Demo on a Kindle Paperwhite 2: Start USB storage from the menu, confirm, plug in the cable, and KOReader comes back after the session">
+</p>
+<p align="center"><sub>Direct method on a Paperwhite 2, at 2x speed.</sub></p>
+
 | Waiting for a computer | Drive exported | Returning |
 | :-: | :-: | :-: |
 | ![Waiting screen with an unplugged cable](screens/usb-waiting.jpg) | ![Active USB storage screen](screens/usb-active.jpg) | ![Storage recovery and return screen](screens/usb-returning.jpg) |
@@ -13,7 +18,7 @@ Without it, KOReader on Kindle blocks USB storage on purpose (it lives on the pa
 | | |
 | :-- | :-- |
 | Tested on | Kindle Paperwhite 2 (6th gen, 2013), firmware 5.12.2.2, KOReader 2026.07.2 started with `koreader.sh --framework_stop` |
-| Other Kindles | Untested. The direct method checks the expected storage layout and services before export (see [Safety](#safety)) and refuses if a check fails. Passing those checks does not establish compatibility with an untested device. The Amazon UI method uses Amazon's USB handling, but is also untested elsewhere |
+| Other Kindles | Untested. The direct method checks the expected storage layout and services before export (see [Safety](#safety)) and refuses if a check fails. Passing those checks does not establish compatibility with an untested device. The Amazon UI method uses Amazon's USB handling, but is also untested elsewhere. Kindles without the `fsl-usb2-udc` USB controller cannot tell a computer from a charger: the plugin asks on any cable, and the Amazon UI method stays in the Amazon UI after a USB session instead of guessing when the cable is out |
 | Status screens | Illustrations tested on Paperwhite 2: 758x1024 visible pixels, 8-bit framebuffer with 768-byte rows. Other framebuffer formats use a text fallback |
 | Other platforms | Unsupported. The plugin disables itself on anything but a Kindle |
 
@@ -25,11 +30,11 @@ You need a jailbroken Kindle with KOReader already installed. Back up your books
 2. Connect the Kindle (leave KOReader first) and unzip into `koreader/plugins/`, so you get `koreader/plugins/usbms.koplugin/main.lua`.
 3. Eject, start KOReader, and check *Tools → More tools → Plugin management → USB mode (Kindle)* is enabled.
 
-The first release is version **1.0.0**. Until a release ZIP is published, you can [build the package from source](#build-a-release). The development tools are not required to install or run a packaged release.
+You can also [build the package from source](#build-a-release). The development tools are not required to install or run a packaged release.
 
 ## Use
 
-- **Plug in a computer** while KOReader is open: it asks whether to share storage. Tap **Share**.
+- **Plug in a computer** while KOReader is open: it asks whether to share storage. Tap **Share**. If you decline, it does not ask again until the cable is unplugged.
 - Or **Main menu → Start USB storage**, or the **Start USB storage** gesture action.
 - Copy your files, then **eject** the Kindle on the computer. With the direct method, KOReader restarts after storage recovery succeeds. With the Amazon UI method, also unplug the cable; KOReader restarts only if automatic return is enabled and storage is available.
 - **Always eject before unplugging.** After an accidental unplug, the direct method attempts a filesystem check before restarting KOReader. This cannot guarantee recovery or prevent data loss, especially if writes were in progress.
@@ -43,7 +48,7 @@ The first release is version **1.0.0**. Until a release ZIP is published, you ca
 2. The helper waits for KOReader to exit, stops what KOReader left running, and waits for both `gadget/connected` and `powerd isCharging` to report `1`. It then unmounts `/mnt/base-us` and writes `/dev/mmcblk0p4` to the USB gadget's LUN. `g_file_storage` is already loaded by the firmware; no module is loaded or unloaded.
 3. When the computer ejects the drive (the gadget empties the LUN) or the cable goes away, the helper confirms the LUN is released, checks unclean sessions through Amazon's `mntus --fsck mount`, and remounts the storage. It resumes `koreader.sh` only after the base mount and access to KOReader are confirmed; the launcher's loop then restarts KOReader.
 
-**Amazon UI method** (slower alternative). KOReader quits normally, `koreader.sh` brings the Amazon framework back, and Amazon handles exporting the drive. If automatic return is enabled, the helper starts KOReader again after the cable is unplugged and storage availability is confirmed. Otherwise, you stay in the Amazon UI. This method is used when you enable it in the settings, and always when KOReader runs on top of the Amazon framework.
+**Amazon UI method** (slower alternative). KOReader quits normally, `koreader.sh` brings the Amazon framework back, and Amazon handles exporting the drive. If automatic return is enabled, the helper starts KOReader again after the cable is unplugged and storage availability is confirmed. Otherwise, you stay in the Amazon UI. If you start KOReader yourself in the meantime (from KUAL, for example), the helper steps aside and never starts a second copy. This method is used when you enable it in the settings, and always when KOReader runs on top of the Amazon framework.
 
 ## Safety
 
@@ -57,9 +62,9 @@ Unplugging during writes, hardware failures and interrupted repairs can damage t
 4. **Known users are stopped:** KOReader closed, `koreader.sh` paused, `volumd` paused, framework stopped. If preventing suspend fails, export is aborted. This cannot prevent an unrelated privileged process from mounting the partition.
 5. **Release checked before recovery:** both the LUN close operation and its empty readback must succeed before remounting or repair. Read errors are not treated as an eject or an unplug. A bus suspend alone does not end the session.
 6. **Resume only after recovery:** unclean sessions are checked through `mntus --fsck mount`. A failed check is not bypassed with a plain mount. Plain mounts have at most three attempts; any terminal recovery failure stops automatic recovery. The base mount and access to KOReader through FUSE must be confirmed before the launcher resumes.
-7. **One helper at a time:** Lua reserves an atomic lock before copying files, and both methods acknowledge the current session token and helper PID. A startup timeout cancels late helpers. A lock left by a helper that never starts or is forcibly killed is deliberately not stolen; reboot to clear it.
+7. **One helper at a time:** Lua reserves an atomic lock before copying files, and both methods acknowledge the current session token and helper PID. A startup timeout cancels late helpers, and a cancelled helper leaves no result behind. A lock is cleared on the next start only once it has been unchanged for 30 s and its owner process is gone, or it is still this KOReader's own cancelled reservation. A lock whose owner PID is alive is never taken over; reboot to clear it.
 
-If recovery cannot be confirmed, the helper leaves the launcher paused and displays an English recovery message. Unplug the cable, then hold the power button 40 s to reboot. The log survives the reboot. Back up and check the userstore from a computer before continuing after filesystem errors. Traps cannot recover from `SIGKILL`, power loss or a kernel hang.
+If recovery cannot be confirmed, the helper leaves the launcher paused and displays a recovery message. Unplug the cable, then hold the power button 40 s to reboot. The log survives the reboot. Back up and check the userstore from a computer before continuing after filesystem errors. Traps cannot recover from `SIGKILL`, power loss or a kernel hang.
 
 ## Tests
 
@@ -74,7 +79,7 @@ English plus the 41 other languages KOReader offers (Romanian (Moldova) and Engl
 
 All translations other than English and Spanish are machine translations: corrections from native speakers are very welcome. Each language is one file in `usbms.koplugin/l10n/`; copy `es.lua` to add one.
 
-Status illustrations are written directly to the framebuffer. Their text is drawn by KOReader's `fbink` with Noto Sans, which covers Latin, Greek and Cyrillic scripts but does no right-to-left or complex shaping. In Arabic, Persian, Hebrew, Hindi, Georgian, Japanese, Korean and Chinese, those three screens show English text; the rest of the plugin is in your language.
+Status illustrations are written directly to the framebuffer. Their text is drawn by KOReader's `fbink` with Noto Sans, which covers Latin, Greek and Cyrillic scripts but does no right-to-left or complex shaping. In Arabic, Persian, Hebrew, Hindi, Georgian, Japanese, Korean and Chinese, the status screens show English text; the rest of the plugin is in your language.
 
 ## Customize the screens
 
@@ -90,7 +95,7 @@ The helper uses RAW images only when the reported virtual framebuffer width is 7
 
 ## Build A Release
 
-Run `pwsh -File tools/Build-Release.ps1`. The version comes from the plugin metadata. The script stages the plugin and license, checks all Lua syntax, the 41 translation tables and their placeholders, text encoding and line endings, and RAW sizes and padding. It rejects unexpected files.
+Run `pwsh -File tools/Build-Release.ps1`. The version comes from the plugin metadata. The script stages the plugin and license, checks all Lua syntax, every translation table in `l10n/` and its placeholders, text encoding and line endings, and RAW sizes and padding. It rejects unexpected files.
 
 The ZIP contains one `usbms.koplugin/` root and is checked entry by entry against the staged SHA-256 hashes. The ZIP, a `.sha256` checksum and a `.manifest.json` file are written under `dist/`; an existing ZIP is never overwritten. Use `-OutputDir` for another destination. These checks do not replace the on-device tests described above. A SHA-256 checksum detects accidental changes but is not a signature or proof of publisher identity.
 
@@ -105,8 +110,6 @@ The ZIP contains one `usbms.koplugin/` root and is checked entry by entry agains
 | The file system check did not finish cleanly | Copy your data off from the computer and run `chkdsk` (Windows) or `fsck.vfat` (Linux) |
 
 The log of the last session: *Settings → Device → USB mass storage → Show last session log*, or `/var/local/usbms-koplugin.log`.
-
-An intermittent preparation failure was observed during testing and did not recur after a device reboot. Its cause remains unconfirmed. If it happens again, record the full error before rebooting and include your Kindle model, firmware, KOReader version and relevant log entries when reporting it. Review logs for personal information before posting them publicly.
 
 ## Credits
 
