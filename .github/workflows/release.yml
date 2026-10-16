@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-linux:
+    name: Shell & Lua Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run shell helper tests
+        run: node --test tests/usbms.test.cjs
+
+      - name: Run Lua data tests
+        run: node tests/lua-data.cjs | npx --yes --package=fengari-node-cli@0.1.0 fengari -
+
+  release:
+    name: Build & Publish Release
+    needs: test-linux
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run conversion and release tests
+        shell: pwsh
+        run: ./tests/Test-Release.ps1
+
+      - name: Build release package
+        shell: pwsh
+        run: |
+          ./tools/Build-Release.ps1 -OutputDir dist
+          $manifestFile = Get-ChildItem -LiteralPath dist -Filter *.manifest.json | Select-Object -First 1
+          if (-not $manifestFile) { throw "Release manifest not found in dist/" }
+          $manifest = Get-Content -LiteralPath $manifestFile.FullName -Raw | ConvertFrom-Json
+          $expectedTag = "v$($manifest.version)"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -cne $expectedTag) {
+            throw "Git tag '$($env:GITHUB_REF_NAME)' does not match plugin version '$expectedTag'"
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbms.koplugin-dist
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.manifest.json
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath dist -File | ForEach-Object { $_.FullName })
+          gh release create $env:GITHUB_REF_NAME @files --title "usbms.koplugin $env:GITHUB_REF_NAME" --generate-notes

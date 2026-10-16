@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-linux:
+    name: Shell & Lua Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run shell helper tests
+        run: node --test tests/usbms.test.cjs
+
+      - name: Run Lua data tests
+        run: node tests/lua-data.cjs | npx --yes --package=fengari-node-cli@0.1.0 fengari -
+
+      - name: Validate release build on Linux
+        run: pwsh -NoLogo -NoProfile -File tools/Build-Release.ps1
+
+  test-windows:
+    name: Screen Conversion & Release Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Lua data tests
+        shell: pwsh
+        run: node tests/lua-data.cjs | npx.cmd --yes --package=fengari-node-cli@0.1.0 fengari -
+
+      - name: Run screen conversion and release packaging tests
+        shell: pwsh
+        run: ./tests/Test-Release.ps1

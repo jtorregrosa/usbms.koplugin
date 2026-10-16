@@ -1,0 +1,334 @@
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const { test } = require("node:test");
+
+const plugin = path.join(__dirname, "..", "usbms.koplugin");
+const direct = fs.readFileSync(path.join(plugin, "usbms_direct.sh"), "utf8");
+const framework = fs.readFileSync(path.join(plugin, "usbms_framework.sh"), "utf8");
+
+function runShell(script, shell = "bash", args = ["-s"]) {
+    const result = spawnSync(
+        process.platform === "win32" ? "wsl.exe" : shell,
+        process.platform === "win32" ? ["--exec", shell, ...args] : args,
+        { input: script, encoding: "utf8", timeout: 30000 },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.signal, null, result.stderr);
+    return result;
+}
+
+function shellFunction(source, name) {
+    const single = source.match(new RegExp(`^${name}\\(\\) \\{[^\\n]*\\}$`, "m"));
+    const multiple = source.match(new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, "m"));
+    assert.ok(single || multiple, `Missing function: ${name}`);
+    return (single || multiple)[0];
+}
+
+const recovery = ["lun_empty", "release_lun", "restore_userstore", "finish"]
+    .map(name => shellFunction(direct, name)).join("\n");
+
+const mocks = `
+exec 3>&1
+EXPORT_ATTEMPTED=0; NEEDS_FSCK=0; RECOVERY_BLOCKED=0; RECOVERY_RESULT=fail
+HAL_PID=; LOG=/dev/null; RESULT=/dev/null; LUN=/dev/null
+LOCK=/unused; PIDFILE=/unused; KOSH_PID=999999; mounted=no
+log() { printf 'LOG %s\\n' "$*"; }
+screen() { echo RECOVERY_SCREEN; }
+sync() { :; }
+sleep() { :; }
+rm() { :; }
+kill() { echo RESUMED; }
+lipc-set-prop() { :; }
+base_mounted() { [ "$mounted" = yes ]; }
+reader_accessible() { return 0; }
+mntus() { printf 'MOUNT %s\\n' "$*" >&3; mounted=yes; }
+`;
+
+function recover(setup, command = "finish") {
+    return runShell(`${mocks}\n${recovery}\n${setup}\n${command}\n`);
+}
+
+for (const [connected, charging, expected] of [
+    ["1", "1", 0],
+    ["1", "0", 1],
+    ["0", "1", 1],
+    ["0", "0", 1],
+    ["1", "", 1],
+    ["", "1", 1],
+]) {
+    test(`host requires gadget=${connected} and cable power=${charging}`, () => {
+        const result = runShell(`
+CONNECTED=/mock/connected
+cat() { printf '%s' '${connected}'; }
+lipc-get-prop() { printf '%s' '${charging}'; }
+${shellFunction(direct, "host_connected")}
+host_connected
+`);
+        assert.equal(result.status, expected);
+    });
+}
+
+test("waiting screen remains until cable power and gadget connection are present", () => {
+    const waiting = direct.slice(direct.indexOf("if ! host_connected; then"), direct.indexOf('log "computer connected"'));
+    const result = runShell(`
+CONNECTED=/mock/connected; HOST_TIMEOUT=3; RESULT=/dev/null; charging=0
+cat() { printf 1; }
+lipc-get-prop() { printf '%s' "$charging"; }
+screen() { echo "$1"; }
+msg() { echo "$1"; }
+log() { echo "$*"; }
+sleep() { echo CABLE_INSERTED; charging=1; }
+${shellFunction(direct, "host_connected")}
+${waiting}
+echo HOST_READY
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "usb-waiting\nCABLE_INSERTED\nHOST_READY");
+});
+
+for (const [size, bits, stride, expected] of [
+    ["768,1024", "8", "768", 0],
+    ["768,4096", "8", "768", 0],
+    ["768,2048", "8", "", 0],
+    ["768,1023", "8", "768", 1],
+    ["768", "8", "768", 1],
+    ["768,", "8", "768", 1],
+    ["768,invalid", "8", "768", 1],
+    ["768,1024,4096", "8", "768", 1],
+    ["800,4096", "8", "768", 1],
+    ["768,800", "8", "768", 1],
+    ["768,1024", "16", "768", 1],
+    ["768,1024", "8", "800", 1],
+    ["768,1024", "8", "", 0],
+    ["768,1024", "8", "invalid", 1],
+    ["768,800", "8", "", 1],
+    ["768,1024", "16", "", 1],
+]) {
+    test(`framebuffer validates ${size} bpp=${bits} stride=${stride}`, () => {
+        const result = runShell(`
+FB_STRIDE=768; FB_HEIGHT=1024
+${shellFunction(direct, "framebuffer_matches")}
+framebuffer_matches '${size}' '${bits}' '${stride}'
+`);
+        assert.equal(result.status, expected);
+    });
+}
+
+for (const [name, source] of [["direct", direct], ["framework", framework]]) {
+    test(`${name} helper has valid POSIX shell syntax`, () => {
+        const result = runShell(source, "sh", ["-n"]);
+        assert.equal(result.status, 0, result.stderr);
+    });
+}
+
+test("failed LUN close prevents mount, fsck and resume", () => {
+    const result = recover("EXPORT_ATTEMPTED=1; NEEDS_FSCK=1; LUN=/dev/full");
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(result.stdout, /MOUNT|RESUMED/);
+    assert.match(result.stdout, /RECOVERY_SCREEN/);
+});
+
+test("successful write with unreadable LUN still prevents recovery", () => {
+    const result = recover("EXPORT_ATTEMPTED=1; cat() { return 1; }");
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(result.stdout, /MOUNT|RESUMED/);
+});
+
+test("LUN read error is not an empty medium", () => {
+    const result = recover("cat() { return 1; }", "lun_empty");
+    assert.equal(result.status, 1);
+});
+
+test("failed mounts never resume and are retried at most three times", () => {
+    const result = recover("mntus() { echo MOUNT_FAILURE >&3; return 1; }");
+    assert.equal(result.status, 1);
+    assert.equal((result.stdout.match(/MOUNT_FAILURE/g) || []).length, 3);
+    assert.doesNotMatch(result.stdout, /RESUMED/);
+});
+
+test("fsck failure is terminal even if mntus mounted the partition", () => {
+    const result = recover(
+        "NEEDS_FSCK=1; mntus() { echo FSCK_FAILURE >&3; mounted=yes; return 1; }",
+        "finish; finish",
+    );
+    assert.equal(result.status, 1);
+    assert.equal((result.stdout.match(/FSCK_FAILURE/g) || []).length, 1);
+    assert.doesNotMatch(result.stdout, /RESUMED/);
+});
+
+test("mount error cannot be hidden by an apparently mounted base", () => {
+    const result = recover("mntus() { mounted=yes; return 1; }");
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(result.stdout, /RESUMED/);
+});
+
+test("exit recovery cannot retry an exhausted explicit recovery", () => {
+    const result = recover(
+        "attempts=0; mntus() { attempts=$((attempts + 1)); echo MOUNT_ATTEMPT >&3; [ \"$attempts\" -ge 4 ] && mounted=yes; }",
+        "restore_userstore; finish",
+    );
+    assert.equal(result.status, 1);
+    assert.equal((result.stdout.match(/MOUNT_ATTEMPT/g) || []).length, 3);
+    assert.doesNotMatch(result.stdout, /RESUMED/);
+});
+
+test("missing FUSE access prevents resume despite a mounted base", () => {
+    const result = recover("mounted=yes; reader_accessible() { return 1; }");
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(result.stdout, /RESUMED/);
+});
+
+test("normal recovery mounts and resumes", () => {
+    const result = recover("");
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /MOUNT mount/);
+    assert.match(result.stdout, /RESUMED/);
+});
+
+test("unclean recovery checks before resuming", () => {
+    const result = recover("EXPORT_ATTEMPTED=1; NEEDS_FSCK=1");
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /MOUNT --fsck mount/);
+    assert.match(result.stdout, /RESUMED/);
+});
+
+test("already mounted storage is not remounted", () => {
+    const result = recover("mounted=yes");
+    assert.equal(result.status, 0);
+    assert.doesNotMatch(result.stdout, /MOUNT/);
+    assert.match(result.stdout, /RESUMED/);
+});
+
+const mountCheck = shellFunction(direct, "userstore_mounted_anywhere");
+for (const [name, mounts, expected] of [
+    ["raw partition alias", "/dev/block/179:4 /chroot/books vfat rw 0 0", 0],
+    ["another loop", "/dev/loop1 /chroot/books vfat rw 0 0", 0],
+    ["no FAT mounts", "/dev/root / ext3 ro 0 0", 1],
+]) {
+    test(`mount guard handles ${name}`, () => {
+        const result = runShell(`
+LOOP_DEV=/dev/loop/0; USERSTORE_DEV=/dev/mmcblk0p4
+cat() { printf '%s\\n' '${mounts}'; }
+${mountCheck}
+userstore_mounted_anywhere
+`);
+        assert.equal(result.status, expected, result.stderr);
+    });
+}
+
+test("unreadable mount table blocks export", () => {
+    const result = runShell(`cat() { return 1; }\n${mountCheck}\nuserstore_mounted_anywhere`);
+    assert.equal(result.status, 0);
+});
+
+test("AUTO_RETURN=0 ends supervision without relaunch", () => {
+    const tail = framework.slice(framework.indexOf('log "USB drive mode started'));
+    const result = runShell(`
+AUTO_RETURN=0; n=0
+log() { :; }
+launch_koreader() { echo UNEXPECTED_LAUNCH; }
+${tail}
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /UNEXPECTED_LAUNCH/);
+});
+
+const launchGuard = shellFunction(framework, "safe_to_launch");
+for (const [name, mounted, connected, available, expected] of [
+    ["ready storage", 0, "0", "1", 0],
+    ["connected host", 0, "1", "1", 1],
+    ["unknown connection", 0, "", "1", 1],
+    ["unmounted storage", 1, "0", "1", 1],
+    ["unavailable storage", 0, "0", "0", 1],
+]) {
+    test(`framework launch guard handles ${name}`, () => {
+        const result = runShell(`
+CONNECTED=/unused
+userstore_mounted() { return ${mounted}; }
+cat() { printf '%s' '${connected}'; }
+lipc-get-prop() { printf '%s' '${available}'; }
+${launchGuard}
+safe_to_launch
+`);
+        assert.equal(result.status, expected, result.stderr);
+    });
+}
+
+for (const [name, source] of [["direct", direct], ["framework", framework]]) {
+    test(`${name} helper rejects an obsolete session token`, () => {
+        const result = runShell(`
+LOCK=/unused; TOKEN=current
+cat() { echo obsolete; }
+${shellFunction(source, "cancelled")}
+cancelled
+`);
+        assert.equal(result.status, 0);
+    });
+    test(`${name} helper rejects startup without Lua's reservation`, () => {
+        const start = source.indexOf('[ -n "$TOKEN" ] && [ "$(cat "$LOCK/token"');
+        const end = source.indexOf('echo $$ > "$LOCK/pid" || exit 1', start);
+        assert.ok(start >= 0 && end > start);
+        const result = runShell(`
+LOCK=/unused; TOKEN=current; READER_PID=123
+cancelled() { return 1; }
+rm() { :; }
+cat() { case "$1" in */token) echo current ;; *) echo 999 ;; esac; }
+${source.slice(start, end)}
+echo UNEXPECTED_CLAIM
+`);
+        assert.equal(result.status, 1);
+        assert.doesNotMatch(result.stdout, /UNEXPECTED_CLAIM/);
+    });
+    test(`${name} late helper cleans its cancelled reservation`, () => {
+        const start = source.indexOf('[ -n "$TOKEN" ] && [ "$(cat "$LOCK/token"');
+        const end = source.indexOf('echo $$ > "$LOCK/pid" || exit 1', start);
+        const result = runShell(`
+LOCK=/unused; PIDFILE=/unused; TOKEN=current; READER_PID=123
+cancelled() { return 0; }
+rm() { echo CLEANED; }
+cat() { case "$1" in */token) echo current ;; *) echo 123 ;; esac; }
+${source.slice(start, end)}
+echo UNEXPECTED_CLAIM
+`);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /CLEANED/);
+        assert.doesNotMatch(result.stdout, /UNEXPECTED_CLAIM/);
+    });
+}
+
+const sessionStart = direct.indexOf('reason=""');
+const sessionEnd = direct.indexOf('log "session ended:', sessionStart);
+const sessionLoop = direct.slice(sessionStart, sessionEnd);
+assert.ok(sessionStart >= 0 && sessionEnd > sessionStart);
+
+for (const [name, connection, lun, events, expected, reason] of [
+    ["connection read error", "return 1", "echo medium", ":", 24, ""],
+    ["LUN read error", "echo 1", "return 1", ":", 24, ""],
+    ["invalid connection", "echo invalid", "echo medium", ":", 24, ""],
+    ["eject", "echo 1", ":", ":", 0, "eject"],
+    ["unplug", "echo 0", "echo medium", ":", 0, "unplug"],
+    ["unplug with empty LUN", "echo 0", ":", ":", 0, "unplug"],
+    ["plug out event with empty LUN", "echo 1", ":", "echo usbPlugOut", 0, "unplug"],
+]) {
+    test(`direct session handles ${name}`, () => {
+        const result = runShell(`
+CONNECTED=/connection; LUN=/lun; HAL_EVENTS=/events
+sleep() { :; }
+cat() { case "$1" in /connection) ${connection} ;; /lun) ${lun} ;; esac; }
+grep() {
+    if [ "$2" = "usbPlugOut" ]; then
+        [ "$(${events})" = "usbPlugOut" ]
+    else
+        return 1
+    fi
+}
+fail() { exit 24; }
+${sessionLoop}
+printf '%s' "$reason"
+`);
+        assert.equal(result.status, expected, result.stderr);
+        assert.equal(result.stdout, reason);
+    });
+}
